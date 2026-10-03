@@ -52,6 +52,7 @@ fun MainScreen(
     val isRecentLoading by viewModel.isRecentLoading.collectAsStateWithLifecycle()
     val clipboardState by viewModel.clipboard.collectAsStateWithLifecycle()
     val isAmoled by viewModel.isAmoledMode.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
 
     var isSearchActive by remember { mutableStateOf(false) }
     var recentFilter by remember { mutableStateOf("All") }
@@ -65,6 +66,7 @@ fun MainScreen(
     var renameNewName by remember { mutableStateOf("") }
     var deleteTargets by remember { mutableStateOf<List<FileItem>?>(null) }
     var detailsTarget by remember { mutableStateOf<FileItem?>(null) }
+    var checksumTarget by remember { mutableStateOf<FileItem?>(null) }
     var zipTargets by remember { mutableStateOf<List<FileItem>?>(null) }
     var zipArchiveName by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
@@ -116,6 +118,7 @@ fun MainScreen(
                     onVaultClick = { viewModel.openVault() },
                     onDuplicatesClick = { viewModel.openDuplicateFinder() },
                     onAnalyzerClick = { viewModel.openStorageAnalyzer() },
+                    onTrashClick = { viewModel.openTrash() },
                     onAmoledToggle = { viewModel.toggleAmoledMode() },
                     isAmoled = isAmoled
                 )
@@ -221,21 +224,20 @@ fun MainScreen(
                         activeFilter = recentFilter,
                         onFilterSelected = { recentFilter = it },
                         onOpenFile = { item ->
-                            if (item.isDirectory) {
-                                viewModel.loadDirectory(item.file, addToHistory = true)
-                            } else {
+                            if (!viewModel.openFileSmart(item, recentFiles)) {
                                 openWithTarget = item
                             }
                         },
                         onMenuAction = { action, item ->
                             when (action) {
-                                "open", "open_with" -> {
-                                    if (item.isDirectory) {
-                                        viewModel.loadDirectory(item.file, addToHistory = true)
-                                    } else {
+                                "open" -> {
+                                    if (!viewModel.openFileSmart(item, recentFiles)) {
                                         openWithTarget = item
                                     }
                                 }
+                                "open_with" -> openWithTarget = item
+                                "toggle_favorite" -> viewModel.toggleFavorite(item.file)
+                                "checksum" -> checksumTarget = item
                                 "vault" -> viewModel.addFileToVault(item)
                                 "copy" -> viewModel.copySingle(item)
                                 "cut" -> viewModel.cutSingle(item)
@@ -256,7 +258,9 @@ fun MainScreen(
                         storageSpace = storageSpace,
                         storageState = storageState,
                         rootStorageDir = viewModel.fileRepository.rootStorageDirectory,
+                        favorites = favorites,
                         onCleanClick = { viewModel.openCleaner() },
+                        onTrashClick = { viewModel.openTrash() },
                         onCategoryClick = { cat, title -> viewModel.openCategory(cat, title) },
                         onAppManagerClick = { viewModel.openAppManager() },
                         onVaultClick = { viewModel.openVault() },
@@ -271,9 +275,7 @@ fun MainScreen(
                             }
                         },
                         onOpenFile = { item ->
-                            if (item.isDirectory) {
-                                viewModel.loadDirectory(item.file, addToHistory = true)
-                            } else {
+                            if (!viewModel.openFileSmart(item, storageState.items)) {
                                 openWithTarget = item
                             }
                         },
@@ -299,13 +301,14 @@ fun MainScreen(
                         onShowSortMenu = { showSortMenu = true },
                         onMenuAction = { action, item ->
                             when (action) {
-                                "open", "open_with" -> {
-                                    if (item.isDirectory) {
-                                        viewModel.loadDirectory(item.file, addToHistory = true)
-                                    } else {
+                                "open" -> {
+                                    if (!viewModel.openFileSmart(item, storageState.items)) {
                                         openWithTarget = item
                                     }
                                 }
+                                "open_with" -> openWithTarget = item
+                                "toggle_favorite" -> viewModel.toggleFavorite(item.file)
+                                "checksum" -> checksumTarget = item
                                 "vault" -> viewModel.addFileToVault(item)
                                 "copy" -> viewModel.copySingle(item)
                                 "cut" -> viewModel.cutSingle(item)
@@ -432,21 +435,55 @@ fun MainScreen(
     }
 
     deleteTargets?.let { targets ->
+        var moveToBin by remember { mutableStateOf(true) }
         AlertDialog(
             onDismissRequest = { deleteTargets = null },
-            title = { Text("Delete") },
+            title = { Text(if (moveToBin) "Move to Recycle Bin" else "Delete Permanently") },
             text = {
-                Text("Delete ${targets.size} item(s)? This action cannot be undone.")
+                Column {
+                    Text(
+                        if (moveToBin)
+                            "Move ${targets.size} item(s) to Recycle Bin? You can restore them anytime."
+                        else
+                            "Permanently delete ${targets.size} item(s)? This action cannot be undone."
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { moveToBin = !moveToBin }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Checkbox(
+                            checked = moveToBin,
+                            onCheckedChange = { moveToBin = it },
+                            colors = CheckboxDefaults.colors(checkedColor = MiOrange)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Send to Recycle Bin (Recommended)",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteItems(targets)
+                        if (moveToBin) {
+                            viewModel.moveToTrash(targets)
+                        } else {
+                            viewModel.deleteItems(targets)
+                        }
                         deleteTargets = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (moveToBin) MiOrange else Color(0xFFEF4444)
+                    )
                 ) {
-                    Text("Delete")
+                    Text(if (moveToBin) "Move to Bin" else "Delete Forever")
                 }
             },
             dismissButton = {
@@ -468,6 +505,20 @@ fun MainScreen(
                     Text(text = "Size: ${item.formattedSize}", style = MaterialTheme.typography.bodyMedium)
                     Text(text = "Type: ${item.category.name}", style = MaterialTheme.typography.bodyMedium)
                     Text(text = "Modified: ${item.formattedDate}", style = MaterialTheme.typography.bodySmall)
+                    if (!item.isDirectory) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = {
+                                checksumTarget = item
+                                detailsTarget = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp), tint = MiOrange)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Calculate Checksum (MD5/SHA)")
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -475,6 +526,13 @@ fun MainScreen(
                     Text("OK")
                 }
             }
+        )
+    }
+
+    checksumTarget?.let { item ->
+        ChecksumDialog(
+            item = item,
+            onDismiss = { checksumTarget = null }
         )
     }
 
@@ -783,7 +841,9 @@ fun StorageTabContent(
     storageSpace: StorageSpace,
     storageState: StorageTabState,
     rootStorageDir: File,
+    favorites: List<FavoriteItem> = emptyList(),
     onCleanClick: () -> Unit,
+    onTrashClick: () -> Unit,
     onCategoryClick: (FileCategory, String) -> Unit,
     onAppManagerClick: () -> Unit,
     onVaultClick: () -> Unit,
@@ -866,6 +926,79 @@ fun StorageTabContent(
                         onClick = onAnalyzerClick,
                         modifier = Modifier.weight(1f)
                     )
+                    PowerToolCard(
+                        title = "Recycle Bin",
+                        subtitle = "Trash restore",
+                        icon = Icons.Default.DeleteOutline,
+                        color = Color(0xFFEF4444),
+                        onClick = onTrashClick,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            // Favorites & Pinned Folders Bar
+            if (favorites.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Favorites & Quick Access",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(favorites, key = { it.path }) { fav ->
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { onNavigateTo(fav.file) },
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    tonalElevation = 1.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = if (fav.isDirectory) Icons.Default.Folder else Icons.Default.InsertDriveFile,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFFB300),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = fav.name,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

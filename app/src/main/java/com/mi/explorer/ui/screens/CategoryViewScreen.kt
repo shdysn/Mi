@@ -1,5 +1,6 @@
 package com.mi.explorer.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,11 +11,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mi.explorer.data.model.FileCategory
 import com.mi.explorer.data.model.FileItem
+import com.mi.explorer.ui.components.ChecksumDialog
 import com.mi.explorer.ui.components.MiFileRow
 import com.mi.explorer.ui.components.OpenFileChooserDialog
 import com.mi.explorer.ui.theme.MiOrange
@@ -28,6 +31,8 @@ fun CategoryViewScreen(
 ) {
     val state by viewModel.categoryViewState.collectAsStateWithLifecycle()
     var openWithTarget by remember { mutableStateOf<FileItem?>(null) }
+    var checksumTarget by remember { mutableStateOf<FileItem?>(null) }
+    var deleteTarget by remember { mutableStateOf<FileItem?>(null) }
 
     Scaffold(
         modifier = modifier.testTag("category_view_screen"),
@@ -97,15 +102,25 @@ fun CategoryViewScreen(
                             isSelected = false,
                             isSelectionMode = false,
                             onClick = {
-                                openWithTarget = item
+                                if (!viewModel.openFileSmart(item, state.items)) {
+                                    openWithTarget = item
+                                }
                             },
                             onLongClick = {},
                             onToggleSelect = {},
                             onMenuAction = { action ->
                                 when (action) {
-                                    "open", "open_with" -> openWithTarget = item
+                                    "open" -> {
+                                        if (!viewModel.openFileSmart(item, state.items)) {
+                                            openWithTarget = item
+                                        }
+                                    }
+                                    "open_with" -> openWithTarget = item
+                                    "toggle_favorite" -> viewModel.toggleFavorite(item.file)
+                                    "checksum" -> checksumTarget = item
                                     "copy" -> viewModel.copySingle(item)
                                     "cut" -> viewModel.cutSingle(item)
+                                    "delete" -> deleteTarget = item
                                     else -> {}
                                 }
                             }
@@ -151,6 +166,72 @@ fun CategoryViewScreen(
             onDismiss = { openWithTarget = null },
             onOpenBuiltIn = builtInAction,
             builtInActionLabel = builtInLabel
+        )
+    }
+
+    checksumTarget?.let { item ->
+        ChecksumDialog(
+            item = item,
+            onDismiss = { checksumTarget = null }
+        )
+    }
+
+    deleteTarget?.let { item ->
+        var moveToBin by remember { mutableStateOf(true) }
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text(if (moveToBin) "Move to Recycle Bin" else "Delete Permanently") },
+            text = {
+                Column {
+                    Text(
+                        if (moveToBin)
+                            "Move \"${item.name}\" to Recycle Bin? You can restore it anytime."
+                        else
+                            "Permanently delete \"${item.name}\"? This action cannot be undone."
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { moveToBin = !moveToBin }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Checkbox(
+                            checked = moveToBin,
+                            onCheckedChange = { moveToBin = it },
+                            colors = CheckboxDefaults.colors(checkedColor = MiOrange)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Send to Recycle Bin (Recommended)",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (moveToBin) {
+                            viewModel.moveToTrash(listOf(item))
+                        } else {
+                            viewModel.deleteItems(listOf(item))
+                        }
+                        deleteTarget = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (moveToBin) MiOrange else Color(0xFFEF4444)
+                    )
+                ) {
+                    Text(if (moveToBin) "Move to Bin" else "Delete Forever")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }

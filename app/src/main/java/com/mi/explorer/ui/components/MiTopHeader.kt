@@ -35,6 +35,7 @@ fun MiTopHeader(
     onVaultClick: () -> Unit = {},
     onDuplicatesClick: () -> Unit = {},
     onAnalyzerClick: () -> Unit = {},
+    onTrashClick: () -> Unit = {},
     onAmoledToggle: () -> Unit = {},
     isAmoled: Boolean = false,
     modifier: Modifier = Modifier
@@ -159,6 +160,14 @@ fun MiTopHeader(
                             onClick = {
                                 showMoreMenu = false
                                 onAnalyzerClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Recycle Bin") },
+                            leadingIcon = { Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = Color(0xFFEF4444)) },
+                            onClick = {
+                                showMoreMenu = false
+                                onTrashClick()
                             }
                         )
                         HorizontalDivider()

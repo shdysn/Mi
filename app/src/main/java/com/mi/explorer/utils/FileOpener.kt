@@ -120,4 +120,35 @@ object FileOpener {
             emptyList()
         }
     }
+
+    fun shareFile(context: Context, item: FileItem) {
+        val file = item.file
+        if (!file.exists()) return
+        try {
+            val uri: Uri = try {
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    file
+                )
+            } catch (e: Exception) {
+                Uri.fromFile(file)
+            }
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = item.mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if (context !is android.app.Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            val chooser = Intent.createChooser(intent, "Share \"${item.name}\"")
+            if (context !is android.app.Activity) {
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Cannot share file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+        }
+    }
 }

@@ -150,6 +150,14 @@ fun MiFileRow(
                         onClick()
                     }
                 )
+                DropdownMenuItem(
+                    text = { Text("Favorite") },
+                    leadingIcon = { Icon(Icons.Default.StarBorder, contentDescription = null, tint = Color(0xFFF59E0B)) },
+                    onClick = {
+                        showMenu = false
+                        onMenuAction("toggle_favorite")
+                    }
+                )
                 if (!item.isDirectory) {
                     DropdownMenuItem(
                         text = { Text("Open with...") },
@@ -157,6 +165,14 @@ fun MiFileRow(
                         onClick = {
                             showMenu = false
                             onMenuAction("open_with")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Calculate Checksum") },
+                        leadingIcon = { Icon(Icons.Default.Fingerprint, contentDescription = null, tint = MiOrange) },
+                        onClick = {
+                            showMenu = false
+                            onMenuAction("checksum")
                         }
                     )
                     DropdownMenuItem(

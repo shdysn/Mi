@@ -29,6 +29,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mi.explorer.ui.components.MiFullAudioPlayerSheet
+import com.mi.explorer.ui.components.MiMiniAudioBar
 import com.mi.explorer.ui.screens.*
 import com.mi.explorer.ui.theme.MiExplorerTheme
 import com.mi.explorer.ui.viewmodel.ExplorerViewModel
@@ -67,6 +69,19 @@ class MainActivity : ComponentActivity() {
             val lowerMime = mimeType.lowercase()
 
             when {
+                // PDF Documents
+                lowerName.endsWith(".pdf") || lowerMime.contains("pdf") -> {
+                    try {
+                        val cacheFile = java.io.File(cacheDir, displayName).apply {
+                            contentResolver.openInputStream(uri)?.use { input ->
+                                outputStream().use { output -> input.copyTo(output) }
+                            }
+                        }
+                        viewModel.openPdfFile(cacheFile)
+                    } catch (e: Exception) {
+                        viewModel.showMessage("Failed to open PDF: ${e.localizedMessage}")
+                    }
+                }
                 // ZIP Archives
                 lowerName.endsWith(".zip") || lowerMime.contains("zip") -> {
                     viewModel.openZipFromUri(uri, displayName)
@@ -197,9 +212,22 @@ fun MiMainApp(viewModel: ExplorerViewModel) {
         viewModel.handleBackPress()
     }
 
+    val audioPlayerState by viewModel.audioPlayerState.collectAsStateWithLifecycle()
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        bottomBar = {
+            if (audioPlayerState.isVisible) {
+                MiMiniAudioBar(
+                    state = audioPlayerState,
+                    onExpand = { viewModel.toggleAudioExpanded() },
+                    onPlayPause = { viewModel.toggleAudioPlayPause() },
+                    onNext = { viewModel.playNextAudio() },
+                    onClose = { viewModel.closeAudioPlayer() }
+                )
+            }
+        }
     ) { innerPadding ->
         Crossfade(
             targetState = currentScreen,
@@ -220,7 +248,17 @@ fun MiMainApp(viewModel: ExplorerViewModel) {
                 Screen.DUPLICATES -> DuplicateFinderScreen(viewModel = viewModel)
                 Screen.STORAGE_ANALYZER -> StorageAnalyzerScreen(viewModel = viewModel)
                 Screen.ZIP_VIEWER -> ZipViewerScreen(viewModel = viewModel)
+                Screen.TRASH -> TrashScreen(viewModel = viewModel)
+                Screen.PDF_VIEWER -> PdfViewerScreen(viewModel = viewModel)
             }
+        }
+
+        if (audioPlayerState.isExpanded) {
+            MiFullAudioPlayerSheet(
+                state = audioPlayerState,
+                viewModel = viewModel,
+                onDismiss = { viewModel.toggleAudioExpanded() }
+            )
         }
     }
 }
