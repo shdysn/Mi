@@ -1,5 +1,6 @@
 package com.mi.explorer.data.model
 
+import android.webkit.MimeTypeMap
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -26,7 +27,7 @@ data class FileItem(
     val lastModified: Long = file.lastModified(),
     val isHidden: Boolean = file.isHidden || file.name.startsWith("."),
     val extension: String = if (file.isDirectory) "" else file.extension.lowercase(Locale.ROOT),
-    val itemCount: Int = if (file.isDirectory) (file.listFiles()?.size ?: 0) else 0
+    val itemCount: Int = 0
 ) {
     val category: FileCategory
         get() = when {
@@ -39,6 +40,62 @@ data class FileItem(
             extension in listOf("apk", "xapk", "apks") -> FileCategory.APK
             extension in listOf("kt", "java", "py", "js", "html", "css", "json", "xml", "c", "cpp", "sh", "md") -> FileCategory.CODE
             else -> FileCategory.UNKNOWN
+        }
+
+    val mimeType: String
+        get() {
+            if (isDirectory) return "resource/folder"
+            val map = MimeTypeMap.getSingleton()
+            val extMime = map.getMimeTypeFromExtension(extension)
+            if (!extMime.isNullOrEmpty()) return extMime
+
+            return when (extension) {
+                "apk", "xapk", "apks" -> "application/vnd.android.package-archive"
+                "json" -> "application/json"
+                "md" -> "text/markdown"
+                "kt", "java", "py", "js", "html", "css", "c", "cpp", "sh", "xml", "log", "csv" -> "text/plain"
+                "pdf" -> "application/pdf"
+                "epub" -> "application/epub+zip"
+                "zip" -> "application/zip"
+                "rar" -> "application/x-rar-compressed"
+                "7z" -> "application/x-7z-compressed"
+                "tar" -> "application/x-tar"
+                "gz" -> "application/gzip"
+                "mp3" -> "audio/mpeg"
+                "m4a", "aac" -> "audio/mp4"
+                "ogg" -> "audio/ogg"
+                "wav" -> "audio/wav"
+                "mp4" -> "video/mp4"
+                "mkv" -> "video/x-matroska"
+                "webm" -> "video/webm"
+                "avi" -> "video/x-msvideo"
+                "mov" -> "video/quicktime"
+                "jpg", "jpeg" -> "image/jpeg"
+                "png" -> "image/png"
+                "webp" -> "image/webp"
+                "gif" -> "image/gif"
+                else -> "*/*"
+            }
+        }
+
+    val friendlyTypeLabel: String
+        get() = when (category) {
+            FileCategory.FOLDER -> "Folder"
+            FileCategory.IMAGE -> "${extension.uppercase(Locale.ROOT)} Image"
+            FileCategory.AUDIO -> "${extension.uppercase(Locale.ROOT)} Audio"
+            FileCategory.VIDEO -> "${extension.uppercase(Locale.ROOT)} Video"
+            FileCategory.DOCUMENT -> when (extension) {
+                "pdf" -> "PDF Document"
+                "doc", "docx" -> "Word Document"
+                "xls", "xlsx" -> "Excel Spreadsheet"
+                "ppt", "pptx" -> "PowerPoint Presentation"
+                "txt" -> "Text File"
+                else -> "${extension.uppercase(Locale.ROOT)} Document"
+            }
+            FileCategory.ARCHIVE -> "Compressed Archive (${extension.uppercase(Locale.ROOT)})"
+            FileCategory.APK -> "Android Application (APK)"
+            FileCategory.CODE -> "${extension.uppercase(Locale.ROOT)} Source Code"
+            FileCategory.UNKNOWN -> if (extension.isNotEmpty()) "${extension.uppercase(Locale.ROOT)} File" else "File"
         }
 
     val formattedSize: String

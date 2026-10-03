@@ -67,6 +67,7 @@ fun MainScreen(
     var zipTargets by remember { mutableStateOf<List<FileItem>?>(null) }
     var zipArchiveName by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
+    var openWithTarget by remember { mutableStateOf<FileItem?>(null) }
 
     Scaffold(
         modifier = modifier.testTag("main_screen"),
@@ -212,9 +213,22 @@ fun MainScreen(
                         isLoading = isRecentLoading,
                         activeFilter = recentFilter,
                         onFilterSelected = { recentFilter = it },
-                        onOpenFile = { item -> handleOpenFile(item, recentFiles, viewModel) },
+                        onOpenFile = { item ->
+                            if (item.isDirectory) {
+                                viewModel.loadDirectory(item.file, addToHistory = true)
+                            } else {
+                                openWithTarget = item
+                            }
+                        },
                         onMenuAction = { action, item ->
                             when (action) {
+                                "open", "open_with" -> {
+                                    if (item.isDirectory) {
+                                        viewModel.loadDirectory(item.file, addToHistory = true)
+                                    } else {
+                                        openWithTarget = item
+                                    }
+                                }
                                 "copy" -> viewModel.copySingle(item)
                                 "cut" -> viewModel.cutSingle(item)
                                 "rename" -> {
@@ -244,7 +258,13 @@ fun MainScreen(
                                 viewModel.loadDirectory(parent, addToHistory = true)
                             }
                         },
-                        onOpenFile = { item -> handleOpenFile(item, storageState.items, viewModel) },
+                        onOpenFile = { item ->
+                            if (item.isDirectory) {
+                                viewModel.loadDirectory(item.file, addToHistory = true)
+                            } else {
+                                openWithTarget = item
+                            }
+                        },
                         onToggleSelect = { viewModel.toggleSelectItem(it) },
                         onSelectAll = { viewModel.selectAll() },
                         onClearSelection = { viewModel.clearSelection() },
@@ -267,6 +287,13 @@ fun MainScreen(
                         onShowSortMenu = { showSortMenu = true },
                         onMenuAction = { action, item ->
                             when (action) {
+                                "open", "open_with" -> {
+                                    if (item.isDirectory) {
+                                        viewModel.loadDirectory(item.file, addToHistory = true)
+                                    } else {
+                                        openWithTarget = item
+                                    }
+                                }
                                 "copy" -> viewModel.copySingle(item)
                                 "cut" -> viewModel.cutSingle(item)
                                 "rename" -> {
@@ -469,6 +496,44 @@ fun MainScreen(
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    openWithTarget?.let { target ->
+        val builtInLabel = when (target.category) {
+            FileCategory.IMAGE -> "View in Mi Gallery (Built-in)"
+            FileCategory.CODE, FileCategory.DOCUMENT -> {
+                if (target.extension in listOf("txt", "md", "json", "xml", "kt", "java", "py", "sh", "html", "css", "js", "log", "csv")) {
+                    "Edit in Mi Text Editor (Built-in)"
+                } else null
+            }
+            FileCategory.ARCHIVE -> "Extract Archive"
+            FileCategory.APK -> "Inspect / Manage APK"
+            else -> null
+        }
+        val builtInAction: (() -> Unit)? = when (target.category) {
+            FileCategory.IMAGE -> {
+                { viewModel.openImageViewer(target.file, storageState.items) }
+            }
+            FileCategory.CODE, FileCategory.DOCUMENT -> {
+                if (target.extension in listOf("txt", "md", "json", "xml", "kt", "java", "py", "sh", "html", "css", "js", "log", "csv")) {
+                    { viewModel.openTextEditor(target.file) }
+                } else null
+            }
+            FileCategory.ARCHIVE -> {
+                { viewModel.unzipItem(target) }
+            }
+            FileCategory.APK -> {
+                { viewModel.openAppManager() }
+            }
+            else -> null
+        }
+
+        OpenFileChooserDialog(
+            item = target,
+            onDismiss = { openWithTarget = null },
+            onOpenBuiltIn = builtInAction,
+            builtInActionLabel = builtInLabel
         )
     }
 

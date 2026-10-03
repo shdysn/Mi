@@ -7,15 +7,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mi.explorer.data.model.FileCategory
+import com.mi.explorer.data.model.FileItem
 import com.mi.explorer.ui.components.MiFileRow
+import com.mi.explorer.ui.components.OpenFileChooserDialog
 import com.mi.explorer.ui.theme.MiOrange
 import com.mi.explorer.ui.viewmodel.ExplorerViewModel
 
@@ -26,6 +27,7 @@ fun CategoryViewScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.categoryViewState.collectAsStateWithLifecycle()
+    var openWithTarget by remember { mutableStateOf<FileItem?>(null) }
 
     Scaffold(
         modifier = modifier.testTag("category_view_screen"),
@@ -95,18 +97,13 @@ fun CategoryViewScreen(
                             isSelected = false,
                             isSelectionMode = false,
                             onClick = {
-                                if (item.category == FileCategory.IMAGE) {
-                                    viewModel.openImageViewer(item.file, state.items)
-                                } else if (item.category == FileCategory.DOCUMENT || item.category == FileCategory.CODE) {
-                                    viewModel.openTextEditor(item.file)
-                                } else {
-                                    handleOpenFile(item, state.items, viewModel)
-                                }
+                                openWithTarget = item
                             },
                             onLongClick = {},
                             onToggleSelect = {},
                             onMenuAction = { action ->
                                 when (action) {
+                                    "open", "open_with" -> openWithTarget = item
                                     "copy" -> viewModel.copySingle(item)
                                     "cut" -> viewModel.cutSingle(item)
                                     else -> {}
@@ -117,5 +114,43 @@ fun CategoryViewScreen(
                 }
             }
         }
+    }
+
+    openWithTarget?.let { target ->
+        val builtInLabel = when (target.category) {
+            FileCategory.IMAGE -> "View in Mi Gallery (Built-in)"
+            FileCategory.CODE, FileCategory.DOCUMENT -> {
+                if (target.extension in listOf("txt", "md", "json", "xml", "kt", "java", "py", "sh", "html", "css", "js", "log", "csv")) {
+                    "Edit in Mi Text Editor (Built-in)"
+                } else null
+            }
+            FileCategory.ARCHIVE -> "Extract Archive"
+            FileCategory.APK -> "Inspect / Manage APK"
+            else -> null
+        }
+        val builtInAction: (() -> Unit)? = when (target.category) {
+            FileCategory.IMAGE -> {
+                { viewModel.openImageViewer(target.file, state.items) }
+            }
+            FileCategory.CODE, FileCategory.DOCUMENT -> {
+                if (target.extension in listOf("txt", "md", "json", "xml", "kt", "java", "py", "sh", "html", "css", "js", "log", "csv")) {
+                    { viewModel.openTextEditor(target.file) }
+                } else null
+            }
+            FileCategory.ARCHIVE -> {
+                { viewModel.unzipItem(target) }
+            }
+            FileCategory.APK -> {
+                { viewModel.openAppManager() }
+            }
+            else -> null
+        }
+
+        OpenFileChooserDialog(
+            item = target,
+            onDismiss = { openWithTarget = null },
+            onOpenBuiltIn = builtInAction,
+            builtInActionLabel = builtInLabel
+        )
     }
 }

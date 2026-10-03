@@ -150,6 +150,16 @@ fun MiFileRow(
                         onClick()
                     }
                 )
+                if (!item.isDirectory) {
+                    DropdownMenuItem(
+                        text = { Text("Open with...") },
+                        leadingIcon = { Icon(Icons.Default.Apps, contentDescription = null) },
+                        onClick = {
+                            showMenu = false
+                            onMenuAction("open_with")
+                        }
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text("Copy") },
                     leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },

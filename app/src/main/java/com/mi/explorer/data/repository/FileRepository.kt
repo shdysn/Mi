@@ -3,6 +3,7 @@ package com.mi.explorer.data.repository
 import android.content.Context
 import android.os.Environment
 import android.os.StatFs
+import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.mi.explorer.data.model.FileCategory
@@ -113,7 +114,10 @@ class FileRepository(private val context: Context) {
         searchQuery: String = ""
     ): List<FileItem> = withContext(Dispatchers.IO) {
         val files = directory.listFiles() ?: return@withContext emptyList()
-        var items = files.map { FileItem(it) }
+        var items = files.map { file ->
+            val count = if (file.isDirectory) (file.list()?.size ?: 0) else 0
+            FileItem(file = file, itemCount = count)
+        }
 
         if (!showHidden) {
             items = items.filter { !it.isHidden }
@@ -146,58 +150,159 @@ class FileRepository(private val context: Context) {
     }
 
     suspend fun getRecentFiles(): List<FileItem> = withContext(Dispatchers.IO) {
-        val roots = listOfNotNull(
-            rootStorageDirectory,
-            context.filesDir,
-            context.getExternalFilesDir(null)
-        ).distinct()
+        val list = mutableListOf<FileItem>()
+        val seenPaths = HashSet<String>()
 
-        val results = mutableListOf<FileItem>()
-        for (root in roots) {
-            scanFiles(root, results, maxFiles = 100, maxDepth = 4)
-        }
-        results.sortedByDescending { it.lastModified }
-    }
+        // 1. Instant MediaStore query (20-40ms)
+        try {
+            val projection = arrayOf(
+                MediaStore.Files.FileColumns.DATA,
+                MediaStore.Files.FileColumns.DATE_MODIFIED
+            )
+            val uri = MediaStore.Files.getContentUri("external")
+            val selection = "${MediaStore.Files.FileColumns.SIZE} > 0"
+            val sortOrder = "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC LIMIT 60"
 
-    private fun scanFiles(dir: File, results: MutableList<FileItem>, maxFiles: Int, maxDepth: Int, currentDepth: Int = 0) {
-        if (currentDepth > maxDepth || results.size >= maxFiles) return
-        val list = dir.listFiles() ?: return
-        for (f in list) {
-            if (f.isDirectory) {
-                if (!f.name.startsWith(".")) {
-                    scanFiles(f, results, maxFiles, maxDepth, currentDepth + 1)
+            context.contentResolver.query(uri, projection, selection, null, sortOrder)?.use { cursor ->
+                val dataCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATA)
+                if (dataCol != -1) {
+                    while (cursor.moveToNext() && list.size < 60) {
+                        val path = cursor.getString(dataCol)
+                        if (!path.isNullOrEmpty() && seenPaths.add(path)) {
+                            val f = File(path)
+                            if (f.exists() && !f.isDirectory && !f.name.startsWith(".")) {
+                                list.add(FileItem(f))
+                            }
+                        }
+                    }
                 }
-            } else {
-                if (!f.name.startsWith(".")) {
-                    results.add(FileItem(f))
+            }
+        } catch (e: Exception) {
+            // MediaStore fallback
+        }
+
+        // 2. Fast shallow scan of primary user directories (Never scan Android/ or deep roots!)
+        if (list.size < 30) {
+            val keyDirs = listOfNotNull(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                File(context.filesDir, "MiExplorer")
+            ).filter { it.exists() && it.canRead() }
+
+            for (dir in keyDirs) {
+                dir.listFiles()?.forEach { f ->
+                    if (!f.isDirectory && !f.name.startsWith(".") && seenPaths.add(f.absolutePath)) {
+                        list.add(FileItem(f))
+                    }
                 }
             }
         }
+
+        list.sortedByDescending { it.lastModified }.take(60)
     }
 
     suspend fun getCategoryFiles(category: FileCategory): List<FileItem> = withContext(Dispatchers.IO) {
-        val roots = listOfNotNull(
-            rootStorageDirectory,
-            context.filesDir,
-            context.getExternalFilesDir(null)
-        ).distinct()
+        val list = mutableListOf<FileItem>()
+        val seenPaths = HashSet<String>()
 
-        val results = mutableListOf<FileItem>()
-        for (root in roots) {
-            scanCategory(root, category, results, maxDepth = 4)
+        // 1. Try fast MediaStore query
+        try {
+            val (uri, selection, sortOrder) = when (category) {
+                FileCategory.IMAGE -> Triple(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    null,
+                    "${MediaStore.Images.Media.DATE_MODIFIED} DESC LIMIT 300"
+                )
+                FileCategory.VIDEO -> Triple(
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    null,
+                    "${MediaStore.Video.Media.DATE_MODIFIED} DESC LIMIT 300"
+                )
+                FileCategory.AUDIO -> Triple(
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    null,
+                    "${MediaStore.Audio.Media.DATE_MODIFIED} DESC LIMIT 300"
+                )
+                else -> Triple(null, null, null)
+            }
+
+            if (uri != null) {
+                val projection = arrayOf(MediaStore.MediaColumns.DATA)
+                context.contentResolver.query(uri, projection, selection, null, sortOrder)?.use { cursor ->
+                    val dataCol = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                    if (dataCol != -1) {
+                        while (cursor.moveToNext() && list.size < 300) {
+                            val path = cursor.getString(dataCol)
+                            if (!path.isNullOrEmpty() && seenPaths.add(path)) {
+                                val f = File(path)
+                                if (f.exists() && !f.isDirectory) {
+                                    list.add(FileItem(f))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // MediaStore fallback
         }
-        results.sortedByDescending { it.lastModified }
+
+        if (list.isNotEmpty()) {
+            return@withContext list.sortedByDescending { it.lastModified }
+        }
+
+        // 2. Targeted shallow folder search (Never scan the entire root or Android/ folder!)
+        val searchFolders = when (category) {
+            FileCategory.IMAGE -> listOfNotNull(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            )
+            FileCategory.VIDEO -> listOfNotNull(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            )
+            FileCategory.AUDIO -> listOfNotNull(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            )
+            FileCategory.DOCUMENT -> listOfNotNull(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                File(context.filesDir, "MiExplorer")
+            )
+            else -> listOfNotNull(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                File(context.filesDir, "MiExplorer")
+            )
+        }.filter { it.exists() && it.canRead() }
+
+        for (dir in searchFolders) {
+            scanCategoryFast(dir, category, list, seenPaths, maxDepth = 2)
+        }
+
+        list.sortedByDescending { it.lastModified }
     }
 
-    private fun scanCategory(dir: File, category: FileCategory, results: MutableList<FileItem>, maxDepth: Int, currentDepth: Int = 0) {
+    private fun scanCategoryFast(
+        dir: File,
+        category: FileCategory,
+        results: MutableList<FileItem>,
+        seenPaths: MutableSet<String>,
+        maxDepth: Int,
+        currentDepth: Int = 0
+    ) {
         if (currentDepth > maxDepth || results.size >= 250) return
         val list = dir.listFiles() ?: return
         for (f in list) {
+            if (f.name.startsWith(".") || f.name.equals("Android", ignoreCase = true)) continue
             if (f.isDirectory) {
-                if (!f.name.startsWith(".")) {
-                    scanCategory(f, category, results, maxDepth, currentDepth + 1)
-                }
-            } else {
+                scanCategoryFast(f, category, results, seenPaths, maxDepth, currentDepth + 1)
+            } else if (seenPaths.add(f.absolutePath)) {
                 val item = FileItem(f)
                 if (item.category == category) {
                     results.add(item)
@@ -207,19 +312,22 @@ class FileRepository(private val context: Context) {
     }
 
     suspend fun scanForClean(): CleanScanResult = withContext(Dispatchers.IO) {
-        val roots = listOfNotNull(
-            rootStorageDirectory,
+        val targetRoots = listOfNotNull(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
             context.filesDir,
             context.getExternalFilesDir(null)
-        ).distinct()
+        ).filter { it.exists() && it.canRead() }.distinct()
 
         val junk = mutableListOf<FileItem>()
         val large = mutableListOf<FileItem>()
         val apks = mutableListOf<FileItem>()
         val emptyFolders = mutableListOf<FileItem>()
 
-        for (root in roots) {
-            scanCleanRecursively(root, junk, large, apks, emptyFolders, depth = 0, maxDepth = 4)
+        for (root in targetRoots) {
+            scanCleanRecursively(root, junk, large, apks, emptyFolders, depth = 0, maxDepth = 3)
         }
 
         CleanScanResult(
@@ -240,12 +348,14 @@ class FileRepository(private val context: Context) {
         maxDepth: Int
     ) {
         if (depth > maxDepth) return
+        if (dir.name.startsWith(".") || dir.name.equals("Android", ignoreCase = true)) return
         val files = dir.listFiles() ?: return
         if (files.isEmpty() && dir != rootStorageDirectory) {
             emptyFolders.add(FileItem(dir))
             return
         }
         for (f in files) {
+            if (f.name.startsWith(".")) continue
             if (f.isDirectory) {
                 scanCleanRecursively(f, junk, large, apks, emptyFolders, depth + 1, maxDepth)
             } else {
