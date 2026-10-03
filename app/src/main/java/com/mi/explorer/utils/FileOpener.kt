@@ -34,11 +34,14 @@ object FileOpener {
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, mimeType)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (context !is android.app.Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
             }
 
-            val chooser = Intent.createChooser(intent, "Open \"${item.name}\" with").apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val chooser = Intent.createChooser(intent, "Open \"${item.name}\" with")
+            if (context !is android.app.Activity) {
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(chooser)
         } catch (e: android.content.ActivityNotFoundException) {
@@ -59,10 +62,13 @@ object FileOpener {
             val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "*/*")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (context !is android.app.Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
             }
-            val chooser = Intent.createChooser(fallbackIntent, "Open \"${item.name}\" with").apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val chooser = Intent.createChooser(fallbackIntent, "Open \"${item.name}\" with")
+            if (context !is android.app.Activity) {
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(chooser)
         } catch (e: Exception) {
@@ -81,7 +87,9 @@ object FileOpener {
                 setDataAndType(uri, item.mimeType)
                 setClassName(packageName, activityName)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (context !is android.app.Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
             }
             context.startActivity(intent)
         } catch (e: Exception) {

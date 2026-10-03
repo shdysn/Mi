@@ -96,7 +96,21 @@ fun MiMainApp(viewModel: ExplorerViewModel) {
         }
     }
 
-    // Lifecycle observer: when returning from system Settings, refresh storage if permission was granted
+    // Track if storage permission was already granted to avoid resetting directory on every ON_RESUME
+    var hadStorageAccess by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Environment.isExternalStorageManager()
+            } else {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+        )
+    }
+
+    // Lifecycle observer: when returning from system Settings, only refresh if permission was freshly granted
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -108,7 +122,8 @@ fun MiMainApp(viewModel: ExplorerViewModel) {
                         Manifest.permission.READ_EXTERNAL_STORAGE
                     ) == PackageManager.PERMISSION_GRANTED
                 }
-                if (hasAllFilesAccess) {
+                if (hasAllFilesAccess && !hadStorageAccess) {
+                    hadStorageAccess = true
                     viewModel.onStoragePermissionGranted()
                 }
             }

@@ -222,7 +222,13 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
 
     fun onStoragePermissionGranted() {
         refreshStorage()
-        loadDirectory(fileRepository.rootStorageDirectory)
+        val currentDir = _storageState.value.currentDir
+        val targetDir = if (currentDir.exists() && currentDir.canRead()) {
+            currentDir
+        } else {
+            fileRepository.rootStorageDirectory
+        }
+        loadDirectory(targetDir)
         loadRecentFiles()
     }
 
