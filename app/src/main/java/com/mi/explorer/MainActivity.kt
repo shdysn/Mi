@@ -60,9 +60,46 @@ class MainActivity : ComponentActivity() {
     private fun handleIncomingIntent(intent: Intent) {
         if (intent.action == Intent.ACTION_VIEW) {
             val uri = intent.data ?: return
-            val displayName = uri.lastPathSegment ?: "archive.zip"
-            viewModel.openZipFromUri(uri, displayName)
+            val mimeType = intent.type ?: contentResolver.getType(uri) ?: ""
+            val displayName = getFileNameFromUri(uri)
+
+            val lowerName = displayName.lowercase()
+            val lowerMime = mimeType.lowercase()
+
+            when {
+                // ZIP Archives
+                lowerName.endsWith(".zip") || lowerMime.contains("zip") -> {
+                    viewModel.openZipFromUri(uri, displayName)
+                }
+                // HTML Files
+                lowerName.endsWith(".html") || lowerName.endsWith(".htm") || lowerMime.contains("html") -> {
+                    viewModel.openTextFromUri(uri, displayName)
+                }
+                // Text, JSON, XML, Logs, Markdown, CSV, Code, etc.
+                else -> {
+                    viewModel.openTextFromUri(uri, displayName)
+                }
+            }
         }
+    }
+
+    private fun getFileNameFromUri(uri: Uri): String {
+        var name: String? = null
+        if (uri.scheme == "content") {
+            try {
+                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (idx != -1) {
+                            name = cursor.getString(idx)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore query error
+            }
+        }
+        return name ?: uri.lastPathSegment ?: "file.txt"
     }
 }
 

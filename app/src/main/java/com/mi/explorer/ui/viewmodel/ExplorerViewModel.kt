@@ -50,10 +50,14 @@ data class StorageTabState(
 
 data class TextEditorState(
     val file: File? = null,
+    val sourceUri: android.net.Uri? = null,
+    val title: String = "",
     val content: String = "",
     val originalContent: String = "",
     val wordWrap: Boolean = false,
-    val isSaving: Boolean = false
+    val isSaving: Boolean = false,
+    val isHtmlMode: Boolean = false,
+    val showHtmlPreview: Boolean = false
 ) {
     val isModified: Boolean get() = content != originalContent
     val lineCount: Int get() = if (content.isEmpty()) 1 else content.lines().size
@@ -565,17 +569,50 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Text Editor
+    // Text & HTML Editor/Viewer
     fun openTextEditor(file: File) {
         viewModelScope.launch {
             val content = fileRepository.readText(file).getOrDefault("")
+            val isHtml = file.extension.lowercase() in listOf("html", "htm")
             _textEditorState.value = TextEditorState(
                 file = file,
+                title = file.name,
                 content = content,
-                originalContent = content
+                originalContent = content,
+                isHtmlMode = isHtml,
+                showHtmlPreview = isHtml
             )
             navigateToScreen(Screen.TEXT_EDITOR)
         }
+    }
+
+    fun openTextFromUri(uri: android.net.Uri, displayName: String) {
+        viewModelScope.launch {
+            val content = try {
+                getApplication<Application>().contentResolver.openInputStream(uri)?.use { stream ->
+                    stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                } ?: ""
+            } catch (e: Exception) {
+                ""
+            }
+
+            val isHtml = displayName.endsWith(".html", ignoreCase = true) || displayName.endsWith(".htm", ignoreCase = true)
+
+            _textEditorState.value = TextEditorState(
+                file = null,
+                sourceUri = uri,
+                title = displayName,
+                content = content,
+                originalContent = content,
+                isHtmlMode = isHtml,
+                showHtmlPreview = isHtml
+            )
+            navigateToScreen(Screen.TEXT_EDITOR)
+        }
+    }
+
+    fun toggleHtmlPreview() {
+        _textEditorState.update { it.copy(showHtmlPreview = !it.showHtmlPreview) }
     }
 
     fun updateEditorContent(newContent: String) {
@@ -588,17 +625,27 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
 
     fun saveEditorFile() {
         val state = _textEditorState.value
-        val file = state.file ?: return
-
         viewModelScope.launch {
             _textEditorState.update { it.copy(isSaving = true) }
-            val res = fileRepository.writeText(file, state.content)
-            if (res.isSuccess) {
+            val success = if (state.file != null) {
+                fileRepository.writeText(state.file, state.content).isSuccess
+            } else if (state.sourceUri != null) {
+                try {
+                    getApplication<Application>().contentResolver.openOutputStream(state.sourceUri, "wt")?.use { out ->
+                        out.bufferedWriter(Charsets.UTF_8).use { it.write(state.content) }
+                    }
+                    true
+                } catch (e: Exception) {
+                    false
+                }
+            } else false
+
+            if (success) {
                 _textEditorState.update { it.copy(originalContent = it.content, isSaving = false) }
                 showMessage("Saved successfully")
             } else {
                 _textEditorState.update { it.copy(isSaving = false) }
-                showMessage("Save error: ${res.exceptionOrNull()?.message}")
+                showMessage("Failed to save file")
             }
         }
     }

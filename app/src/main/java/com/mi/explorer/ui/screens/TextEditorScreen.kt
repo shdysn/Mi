@@ -1,5 +1,7 @@
 package com.mi.explorer.ui.screens
 
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -9,6 +11,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.WrapText
 import androidx.compose.material3.*
@@ -24,6 +28,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mi.explorer.ui.theme.MiOrange
 import com.mi.explorer.ui.viewmodel.ExplorerViewModel
@@ -38,6 +43,8 @@ fun TextEditorScreen(
     val scrollState = rememberScrollState()
     val hScrollState = rememberScrollState()
 
+    val displayTitle = state.title.ifEmpty { state.file?.name ?: "Text Viewer" }
+
     Scaffold(
         modifier = modifier.testTag("text_editor_screen"),
         topBar = {
@@ -46,8 +53,9 @@ fun TextEditorScreen(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = state.file?.name ?: "Text Viewer",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                                text = displayTitle,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                maxLines = 1
                             )
                             if (state.isModified) {
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -59,7 +67,7 @@ fun TextEditorScreen(
                             }
                         }
                         Text(
-                            text = "${state.lineCount} lines, ${state.charCount} characters",
+                            text = if (state.showHtmlPreview) "HTML Web Preview" else "${state.lineCount} lines, ${state.charCount} characters",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -74,88 +82,126 @@ fun TextEditorScreen(
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = { viewModel.toggleEditorWordWrap() },
-                        modifier = Modifier.testTag("text_editor_wrap_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.WrapText,
-                            contentDescription = "Toggle Wrap",
-                            tint = if (state.wordWrap) MiOrange else MaterialTheme.colorScheme.onSurface
-                        )
+                    // HTML Preview vs Code Toggle button
+                    if (state.isHtmlMode) {
+                        IconButton(onClick = { viewModel.toggleHtmlPreview() }) {
+                            Icon(
+                                imageVector = if (state.showHtmlPreview) Icons.Default.Code else Icons.Default.Language,
+                                contentDescription = if (state.showHtmlPreview) "Show Code" else "Show HTML Preview",
+                                tint = MiOrange
+                            )
+                        }
                     }
 
-                    Button(
-                        onClick = { viewModel.saveEditorFile() },
-                        enabled = !state.isSaving,
-                        colors = ButtonDefaults.buttonColors(containerColor = MiOrange, contentColor = Color.White),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.padding(end = 8.dp).testTag("text_editor_save_button")
-                    ) {
-                        if (state.isSaving) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
-                        } else {
-                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save")
+                    if (!state.showHtmlPreview) {
+                        IconButton(
+                            onClick = { viewModel.toggleEditorWordWrap() },
+                            modifier = Modifier.testTag("text_editor_wrap_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.WrapText,
+                                contentDescription = "Toggle Wrap",
+                                tint = if (state.wordWrap) MiOrange else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Button(
+                            onClick = { viewModel.saveEditorFile() },
+                            enabled = !state.isSaving,
+                            colors = ButtonDefaults.buttonColors(containerColor = MiOrange, contentColor = Color.White),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.padding(end = 8.dp).testTag("text_editor_save_button")
+                        ) {
+                            if (state.isSaving) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
+                            } else {
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save")
+                            }
                         }
                     }
                 }
             )
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
-        ) {
-            val lines = state.content.lines()
-            val lineCount = if (lines.isEmpty()) 1 else lines.size
-            val lineNumbersText = (1..lineCount).joinToString("\n")
-
-            Row(
+        if (state.showHtmlPreview) {
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(scrollState)
+                    .padding(innerPadding)
+                    .background(Color.White)
             ) {
-                // Line numbers gutter
-                Text(
-                    text = lineNumbersText,
-                    style = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
-                    ),
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.builtInZoomControls = true
+                            settings.displayZoomControls = false
+                            webViewClient = WebViewClient()
+                        }
+                    },
+                    update = { webView ->
+                        webView.loadDataWithBaseURL(null, state.content, "text/html", "UTF-8", null)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(MaterialTheme.colorScheme.background)
+            ) {
+                val lines = state.content.lines()
+                val lineCount = if (lines.isEmpty()) 1 else lines.size
+                val lineNumbersText = (1..lineCount).joinToString("\n")
+
+                Row(
                     modifier = Modifier
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        .padding(horizontal = 8.dp, vertical = 8.dp)
-                )
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                ) {
+                    // Line numbers gutter
+                    Text(
+                        text = lineNumbersText,
+                        style = TextStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                        ),
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                    )
 
-                val editorModifier = if (state.wordWrap) {
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                } else {
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(hScrollState)
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                    val editorModifier = if (state.wordWrap) {
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    } else {
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(hScrollState)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    }
+
+                    BasicTextField(
+                        value = state.content,
+                        onValueChange = { viewModel.updateEditorContent(it) },
+                        textStyle = TextStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                            color = MaterialTheme.colorScheme.onBackground
+                        ),
+                        cursorBrush = SolidColor(MiOrange),
+                        modifier = editorModifier.testTag("text_editor_field")
+                    )
                 }
-
-                BasicTextField(
-                    value = state.content,
-                    onValueChange = { viewModel.updateEditorContent(it) },
-                    textStyle = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp,
-                        color = MaterialTheme.colorScheme.onBackground
-                    ),
-                    cursorBrush = SolidColor(MiOrange),
-                    modifier = editorModifier.testTag("text_editor_field")
-                )
             }
         }
     }
