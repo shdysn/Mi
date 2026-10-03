@@ -195,6 +195,12 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun onStoragePermissionGranted() {
+        refreshStorage()
+        loadDirectory(fileRepository.rootStorageDirectory)
+        loadRecentFiles()
+    }
+
     fun loadRecentFiles() {
         viewModelScope.launch {
             isRecentLoading.value = true
