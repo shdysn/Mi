@@ -31,12 +31,20 @@ enum class Screen {
     STORAGE_ANALYZER,
     ZIP_VIEWER,
     TRASH,
-    PDF_VIEWER
+    PDF_VIEWER,
+    VIDEO_PLAYER
 }
 
 data class PdfViewerState(
     val file: File? = null,
     val title: String = ""
+)
+
+data class VideoPlayerState(
+    val file: File? = null,
+    val title: String = "",
+    val playlist: List<FileItem> = emptyList(),
+    val currentIndex: Int = 0
 )
 
 data class AudioPlayerState(
@@ -227,6 +235,10 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     private var audioProgressJob: Job? = null
     private val _audioPlayerState = MutableStateFlow(AudioPlayerState())
     val audioPlayerState: StateFlow<AudioPlayerState> = _audioPlayerState.asStateFlow()
+
+    // Built-in Video Player
+    private val _videoPlayerState = MutableStateFlow(VideoPlayerState())
+    val videoPlayerState: StateFlow<VideoPlayerState> = _videoPlayerState.asStateFlow()
 
     // Snackbar message
     private val _message = MutableStateFlow<String?>(null)
@@ -1108,7 +1120,9 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
                 audioProgressJob?.cancel()
 
                 val player = MediaPlayer()
-                player.setDataSource(item.file.absolutePath)
+                java.io.FileInputStream(item.file).use { fis ->
+                    player.setDataSource(fis.fd)
+                }
                 player.prepare()
 
                 var title = item.name
@@ -1139,7 +1153,7 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
                     currentPositionMs = 0,
                     isPlaying = true,
                     isVisible = true,
-                    isExpanded = false,
+                    isExpanded = true,
                     playlist = fullList,
                     currentIndex = idx,
                     isShuffle = _audioPlayerState.value.isShuffle,
@@ -1161,6 +1175,45 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
                 showMessage("Cannot play audio: ${e.localizedMessage}")
             }
         }
+    }
+
+    // ==========================================
+    // BUILT-IN VIDEO PLAYER METHODS
+    // ==========================================
+
+    fun playVideo(item: FileItem, playlist: List<FileItem> = emptyList()) {
+        // Pause audio if currently running
+        if (mediaPlayer?.isPlaying == true) {
+            mediaPlayer?.pause()
+            _audioPlayerState.update { it.copy(isPlaying = false) }
+        }
+
+        val fullList = if (playlist.isNotEmpty()) playlist else listOf(item)
+        val idx = fullList.indexOfFirst { it.path == item.path }.coerceAtLeast(0)
+
+        _videoPlayerState.value = VideoPlayerState(
+            file = item.file,
+            title = item.name,
+            playlist = fullList,
+            currentIndex = idx
+        )
+        navigateToScreen(Screen.VIDEO_PLAYER)
+    }
+
+    fun playNextVideo() {
+        val state = _videoPlayerState.value
+        if (state.playlist.isEmpty()) return
+        val nextIdx = (state.currentIndex + 1) % state.playlist.size
+        val nextItem = state.playlist[nextIdx]
+        playVideo(nextItem, state.playlist)
+    }
+
+    fun playPreviousVideo() {
+        val state = _videoPlayerState.value
+        if (state.playlist.isEmpty()) return
+        val prevIdx = if (state.currentIndex > 0) state.currentIndex - 1 else state.playlist.lastIndex
+        val prevItem = state.playlist[prevIdx]
+        playVideo(prevItem, state.playlist)
     }
 
     private fun startAudioProgressTicker() {
@@ -1254,26 +1307,33 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
         }
 
         // 2. Audio Files
-        if (item.category == FileCategory.AUDIO || ext in listOf("mp3", "wav", "ogg", "m4a", "flac", "aac", "wma")) {
-            val audioSiblings = siblingItems.filter { it.category == FileCategory.AUDIO }
+        if (item.category == FileCategory.AUDIO || ext in listOf("mp3", "wav", "ogg", "m4a", "flac", "aac", "wma", "opus", "amr", "m4b", "mid", "midi")) {
+            val audioSiblings = siblingItems.filter { it.category == FileCategory.AUDIO || it.extension.lowercase() in listOf("mp3", "wav", "ogg", "m4a", "flac", "aac", "wma", "opus", "amr") }
             playAudio(item, if (audioSiblings.isNotEmpty()) audioSiblings else listOf(item))
             return true
         }
 
-        // 3. Image Files
+        // 3. Video Files
+        if (item.category == FileCategory.VIDEO || ext in listOf("mp4", "mkv", "webm", "avi", "mov", "3gp", "flv", "wmv", "m4v", "ts", "mpg", "mpeg")) {
+            val videoSiblings = siblingItems.filter { it.category == FileCategory.VIDEO || it.extension.lowercase() in listOf("mp4", "mkv", "webm", "avi", "mov", "3gp", "flv", "wmv", "m4v", "ts", "mpg", "mpeg") }
+            playVideo(item, if (videoSiblings.isNotEmpty()) videoSiblings else listOf(item))
+            return true
+        }
+
+        // 4. Image Files
         if (item.category == FileCategory.IMAGE || ext in listOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic")) {
             val imageSiblings = siblingItems.filter { it.category == FileCategory.IMAGE }
             openImageViewer(item.file, if (imageSiblings.isNotEmpty()) imageSiblings else listOf(item))
             return true
         }
 
-        // 4. Archive (ZIP)
+        // 5. Archive (ZIP)
         if (ext == "zip") {
             openZipViewer(item.file)
             return true
         }
 
-        // 5. Text / Code / HTML / Markdown / Logs / JSON / XML / CSV
+        // 6. Text / Code / HTML / Markdown / Logs / JSON / XML / CSV
         if (item.category == FileCategory.CODE || ext in listOf(
                 "txt", "log", "json", "xml", "html", "htm", "md", "csv",
                 "kt", "java", "py", "js", "ts", "css", "c", "cpp", "h",

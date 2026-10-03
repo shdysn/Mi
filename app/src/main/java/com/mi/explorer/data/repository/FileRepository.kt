@@ -101,10 +101,71 @@ class FileRepository(private val context: Context) {
                 val docs = File(base, "Documents")
                 docs.mkdirs()
                 File(docs, "Project_Roadmap.txt").writeText("1. Modern Compose UI\n2. MIUI-inspired Squircles\n3. Zero Ads\n4. Lightning fast\n")
+
+                val musicDir = File(base, "Music").apply { mkdirs() }
+                val sampleAudio = File(musicDir, "Mi_Melody_Sample.wav")
+                if (!sampleAudio.exists()) {
+                    createSampleWavFile(sampleAudio)
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    private fun createSampleWavFile(file: File) {
+        try {
+            val sampleRate = 8000
+            val numSeconds = 4
+            val numSamples = sampleRate * numSeconds
+            val buffer = ByteArray(numSamples)
+            val freqs = listOf(523.25, 659.25, 783.99, 1046.50)
+            for (i in 0 until numSamples) {
+                val sec = i / sampleRate
+                val freq = freqs[(sec % freqs.size)]
+                val angle = 2.0 * Math.PI * i / (sampleRate / freq)
+                val sample = (Math.sin(angle) * 127 + 128).toInt().toByte()
+                buffer[i] = sample
+            }
+
+            FileOutputStream(file).use { out ->
+                val totalDataLen = buffer.size + 36
+                val byteRate = sampleRate
+
+                out.write("RIFF".toByteArray(Charsets.US_ASCII))
+                out.write(intToByteArray(totalDataLen))
+                out.write("WAVE".toByteArray(Charsets.US_ASCII))
+                out.write("fmt ".toByteArray(Charsets.US_ASCII))
+                out.write(intToByteArray(16))
+                out.write(shortToByteArray(1))
+                out.write(shortToByteArray(1))
+                out.write(intToByteArray(sampleRate))
+                out.write(intToByteArray(byteRate))
+                out.write(shortToByteArray(1))
+                out.write(shortToByteArray(8))
+                out.write("data".toByteArray(Charsets.US_ASCII))
+                out.write(intToByteArray(buffer.size))
+                out.write(buffer)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun intToByteArray(value: Int): ByteArray {
+        return byteArrayOf(
+            (value and 0xFF).toByte(),
+            ((value shr 8) and 0xFF).toByte(),
+            ((value shr 16) and 0xFF).toByte(),
+            ((value shr 24) and 0xFF).toByte()
+        )
+    }
+
+    private fun shortToByteArray(value: Int): ByteArray {
+        return byteArrayOf(
+            (value and 0xFF).toByte(),
+            ((value shr 8) and 0xFF).toByte()
+        )
     }
 
     suspend fun listFiles(
@@ -263,11 +324,15 @@ class FileRepository(private val context: Context) {
             FileCategory.VIDEO -> listOfNotNull(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                File(context.filesDir, "MiExplorer/Videos"),
+                File(context.filesDir, "MiExplorer")
             )
             FileCategory.AUDIO -> listOfNotNull(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                File(context.filesDir, "MiExplorer/Music"),
+                File(context.filesDir, "MiExplorer")
             )
             FileCategory.DOCUMENT -> listOfNotNull(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),

@@ -250,6 +250,7 @@ fun MiMainApp(viewModel: ExplorerViewModel) {
                 Screen.ZIP_VIEWER -> ZipViewerScreen(viewModel = viewModel)
                 Screen.TRASH -> TrashScreen(viewModel = viewModel)
                 Screen.PDF_VIEWER -> PdfViewerScreen(viewModel = viewModel)
+                Screen.VIDEO_PLAYER -> VideoPlayerScreen(viewModel = viewModel)
             }
         }
 
