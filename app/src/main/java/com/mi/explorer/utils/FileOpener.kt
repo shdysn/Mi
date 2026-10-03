@@ -9,8 +9,38 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.mi.explorer.data.model.FileCategory
 import com.mi.explorer.data.model.FileItem
+import java.io.File
 
 object FileOpener {
+
+    fun installApk(context: Context, file: File) {
+        if (!file.exists()) {
+            Toast.makeText(context, "APK file does not exist", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val uri: Uri = try {
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    file
+                )
+            } catch (e: Exception) {
+                Uri.fromFile(file)
+            }
+
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if (context !is android.app.Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Cannot launch installer: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     fun openWithChooser(context: Context, item: FileItem) {
         val file = item.file

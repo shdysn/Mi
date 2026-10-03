@@ -44,7 +44,7 @@ fun CategoryGrid(
         MiCategory("Videos", Icons.Default.Movie, Color.White, MiPurple, FileCategory.VIDEO),
         MiCategory("Docs", Icons.Default.Description, Color.White, MiYellow, FileCategory.DOCUMENT),
         MiCategory("Music", Icons.Default.Audiotrack, Color.White, MiRed, FileCategory.AUDIO),
-        MiCategory("APKs", Icons.Default.Android, Color.White, MiGreen, FileCategory.APK, isApkManager = true),
+        MiCategory("APKs", Icons.Default.Android, Color.White, MiGreen, FileCategory.APK),
         MiCategory("Downloads", Icons.Default.Download, Color.White, MiCyan, null),
         MiCategory("Archives", Icons.Default.Archive, Color.White, MiAmber, FileCategory.ARCHIVE),
         MiCategory("Cleaner", Icons.Default.CleaningServices, Color.White, MiMint, null, isCleaner = true)

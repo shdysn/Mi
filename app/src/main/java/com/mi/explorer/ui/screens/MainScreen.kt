@@ -558,7 +558,7 @@ fun MainScreen(
                 } else null
             }
             FileCategory.ARCHIVE -> "Inspect & Extract with Mi Zip"
-            FileCategory.APK -> "Inspect / Manage APK"
+            FileCategory.APK -> "Install / Inspect Package (Built-in)"
             else -> null
         }
         val builtInAction: (() -> Unit)? = when (target.category) {
@@ -574,7 +574,7 @@ fun MainScreen(
                 { viewModel.openZipViewer(target.file) }
             }
             FileCategory.APK -> {
-                { viewModel.openAppManager() }
+                { viewModel.openApkInstallDialog(target.file) }
             }
             else -> null
         }
@@ -1198,7 +1198,7 @@ fun handleOpenFile(
             viewModel.openZipViewer(item.file)
         }
         FileCategory.APK -> {
-            viewModel.openAppManager()
+            viewModel.openApkInstallDialog(item.file)
         }
         else -> {
             viewModel.openTextEditor(item.file)

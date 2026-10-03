@@ -29,12 +29,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mi.explorer.data.model.FileItem
+import com.mi.explorer.ui.components.ApkInstallDialog
 import com.mi.explorer.ui.components.MiFullAudioPlayerSheet
 import com.mi.explorer.ui.components.MiMiniAudioBar
 import com.mi.explorer.ui.screens.*
 import com.mi.explorer.ui.theme.MiExplorerTheme
 import com.mi.explorer.ui.viewmodel.ExplorerViewModel
 import com.mi.explorer.ui.viewmodel.Screen
+import com.mi.explorer.utils.FileOpener
 
 class MainActivity : ComponentActivity() {
 
@@ -213,6 +216,7 @@ fun MiMainApp(viewModel: ExplorerViewModel) {
     }
 
     val audioPlayerState by viewModel.audioPlayerState.collectAsStateWithLifecycle()
+    val apkInstallTarget by viewModel.apkInstallTarget.collectAsStateWithLifecycle()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -259,6 +263,19 @@ fun MiMainApp(viewModel: ExplorerViewModel) {
                 state = audioPlayerState,
                 viewModel = viewModel,
                 onDismiss = { viewModel.toggleAudioExpanded() }
+            )
+        }
+
+        apkInstallTarget?.let { apk ->
+            ApkInstallDialog(
+                apk = apk,
+                onDismiss = { viewModel.closeApkInstallDialog() },
+                onInstall = {
+                    FileOpener.installApk(context, apk.file)
+                },
+                onShare = {
+                    FileOpener.shareFile(context, FileItem(apk.file))
+                }
             )
         }
     }

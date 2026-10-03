@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,11 +16,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mi.explorer.data.model.ApkTab
 import com.mi.explorer.data.model.FileCategory
 import com.mi.explorer.data.model.FileItem
 import com.mi.explorer.ui.components.ChecksumDialog
 import com.mi.explorer.ui.components.MiFileRow
 import com.mi.explorer.ui.components.OpenFileChooserDialog
+import com.mi.explorer.ui.theme.MiGreen
 import com.mi.explorer.ui.theme.MiOrange
 import com.mi.explorer.ui.viewmodel.ExplorerViewModel
 
@@ -54,6 +57,19 @@ fun CategoryViewScreen(
                         modifier = Modifier.testTag("category_back_button")
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (state.category == FileCategory.APK) {
+                        FilledTonalButton(
+                            onClick = { viewModel.openAppManager(tab = ApkTab.INSTALLED_APPS) },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Apps, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Installed Apps", style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                 }
             )
@@ -140,7 +156,7 @@ fun CategoryViewScreen(
                 } else null
             }
             FileCategory.ARCHIVE -> "Inspect & Extract with Mi Zip"
-            FileCategory.APK -> "Inspect / Manage APK"
+            FileCategory.APK -> "Install / Inspect Package (Built-in)"
             else -> null
         }
         val builtInAction: (() -> Unit)? = when (target.category) {
@@ -156,7 +172,7 @@ fun CategoryViewScreen(
                 { viewModel.openZipViewer(target.file) }
             }
             FileCategory.APK -> {
-                { viewModel.openAppManager() }
+                { viewModel.openApkInstallDialog(target.file) }
             }
             else -> null
         }

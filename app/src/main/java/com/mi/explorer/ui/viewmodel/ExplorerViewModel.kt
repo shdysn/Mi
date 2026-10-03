@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import com.mi.explorer.data.model.*
 import com.mi.explorer.data.repository.*
 import com.mi.explorer.ui.components.MiTab
+import com.mi.explorer.utils.FileOpener
 import android.media.MediaPlayer
 import android.media.MediaMetadataRetriever
 import kotlinx.coroutines.Job
@@ -185,6 +186,13 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     val includeSystemApps = MutableStateFlow(false)
     val appsSearchQuery = MutableStateFlow("")
 
+    private val _storageApks = MutableStateFlow<List<ApkFileItem>>(emptyList())
+    val storageApks: StateFlow<List<ApkFileItem>> = _storageApks.asStateFlow()
+    val isStorageApksLoading = MutableStateFlow(false)
+    val apkScreenTab = MutableStateFlow(ApkTab.APK_FILES)
+    private val _apkInstallTarget = MutableStateFlow<ApkFileItem?>(null)
+    val apkInstallTarget: StateFlow<ApkFileItem?> = _apkInstallTarget.asStateFlow()
+
     // Vault Repository & State
     val vaultRepository = VaultRepository(application)
     val isVaultPinSet = MutableStateFlow(vaultRepository.isPinSet())
@@ -250,6 +258,7 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
         loadRecentFiles()
         loadFavorites()
         loadTrashItems()
+        loadStorageApks()
     }
 
     fun selectTab(tab: MiTab) {
@@ -746,10 +755,30 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // App Manager
-    fun openAppManager() {
+    // App & APK Manager
+    fun openAppManager(tab: ApkTab = ApkTab.APK_FILES) {
+        apkScreenTab.value = tab
         navigateToScreen(Screen.APP_MANAGER)
+        loadStorageApks()
         loadApps()
+    }
+
+    fun setApkTab(tab: ApkTab) {
+        apkScreenTab.value = tab
+        if (tab == ApkTab.APK_FILES && _storageApks.value.isEmpty()) {
+            loadStorageApks()
+        } else if (tab == ApkTab.INSTALLED_APPS && _installedApps.value.isEmpty()) {
+            loadApps()
+        }
+    }
+
+    fun loadStorageApks() {
+        viewModelScope.launch {
+            isStorageApksLoading.value = true
+            val apks = appsRepository.getStorageApkFiles()
+            _storageApks.value = apks
+            isStorageApksLoading.value = false
+        }
     }
 
     fun loadApps() {
@@ -768,6 +797,44 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
 
     fun setAppsSearchQuery(q: String) {
         appsSearchQuery.value = q
+    }
+
+    fun backupInstalledApp(app: AppInfoItem) {
+        viewModelScope.launch {
+            showMessage("Backing up ${app.appName}...")
+            val res = appsRepository.backupAppApk(app)
+            res.fold(
+                onSuccess = { dest ->
+                    showMessage("Saved APK to Downloads/MiExplorer/Backup")
+                    loadStorageApks()
+                },
+                onFailure = { err ->
+                    showMessage("Backup failed: ${err.localizedMessage}")
+                }
+            )
+        }
+    }
+
+    fun deleteStorageApk(item: ApkFileItem) {
+        viewModelScope.launch {
+            if (item.file.delete()) {
+                showMessage("Deleted \"${item.name}\"")
+                loadStorageApks()
+            } else {
+                showMessage("Failed to delete file")
+            }
+        }
+    }
+
+    fun openApkInstallDialog(file: File) {
+        viewModelScope.launch {
+            val item = appsRepository.parseApkFile(file)
+            _apkInstallTarget.value = item
+        }
+    }
+
+    fun closeApkInstallDialog() {
+        _apkInstallTarget.value = null
     }
 
     // AMOLED Mode
@@ -1345,7 +1412,13 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
             return true
         }
 
-        // Non-previewable (APK, documents like docx, unknown binary) -> return false so popup/chooser can be used
+        // 7. APK Installation files
+        if (item.category == FileCategory.APK || ext in listOf("apk", "xapk", "apks")) {
+            openApkInstallDialog(item.file)
+            return true
+        }
+
+        // Non-previewable (documents like docx, unknown binary) -> return false so popup/chooser can be used
         return false
     }
 

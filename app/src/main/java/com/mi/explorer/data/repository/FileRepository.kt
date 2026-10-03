@@ -286,6 +286,11 @@ class FileRepository(private val context: Context) {
                     null,
                     "${MediaStore.Audio.Media.DATE_MODIFIED} DESC LIMIT 300"
                 )
+                FileCategory.APK -> Triple(
+                    MediaStore.Files.getContentUri("external"),
+                    "${MediaStore.MediaColumns.DATA} LIKE '%.apk' OR ${MediaStore.MediaColumns.DATA} LIKE '%.xapk' OR ${MediaStore.MediaColumns.DATA} LIKE '%.apks' OR ${MediaStore.MediaColumns.MIME_TYPE} = 'application/vnd.android.package-archive'",
+                    "${MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 300"
+                )
                 else -> Triple(null, null, null)
             }
 
@@ -338,6 +343,24 @@ class FileRepository(private val context: Context) {
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
                 File(context.filesDir, "MiExplorer")
+            )
+            FileCategory.APK -> listOfNotNull(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                File(Environment.getExternalStorageDirectory(), "Download"),
+                File(Environment.getExternalStorageDirectory(), "Downloads"),
+                File(Environment.getExternalStorageDirectory(), "Bluetooth"),
+                File(Environment.getExternalStorageDirectory(), "Documents"),
+                File(Environment.getExternalStorageDirectory(), "Telegram/Telegram Documents"),
+                File(Environment.getExternalStorageDirectory(), "WhatsApp/Media/WhatsApp Documents"),
+                File(Environment.getExternalStorageDirectory(), "ShareMe"),
+                File(Environment.getExternalStorageDirectory(), "Apks"),
+                File(Environment.getExternalStorageDirectory(), "Apps"),
+                File(Environment.getExternalStorageDirectory(), "ADM"),
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "MiExplorer/APKs"),
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "MiExplorer/Backup"),
+                File(context.filesDir, "MiExplorer/APKs"),
+                File(context.filesDir, "MiExplorer/Backup"),
+                Environment.getExternalStorageDirectory()
             )
             else -> listOfNotNull(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
