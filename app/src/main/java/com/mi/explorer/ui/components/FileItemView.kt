@@ -159,6 +159,14 @@ fun MiFileRow(
                             onMenuAction("open_with")
                         }
                     )
+                    DropdownMenuItem(
+                        text = { Text("Hide in Vault") },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = MiOrange) },
+                        onClick = {
+                            showMenu = false
+                            onMenuAction("vault")
+                        }
+                    )
                 }
                 DropdownMenuItem(
                     text = { Text("Copy") },

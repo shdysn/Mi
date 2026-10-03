@@ -9,9 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.mi.explorer.data.model.*
-import com.mi.explorer.data.repository.AppsRepository
-import com.mi.explorer.data.repository.CleanScanResult
-import com.mi.explorer.data.repository.FileRepository
+import com.mi.explorer.data.repository.*
 import com.mi.explorer.ui.components.MiTab
 import java.io.File
 
@@ -22,7 +20,10 @@ enum class Screen {
     CATEGORY_VIEW,
     TEXT_EDITOR,
     IMAGE_VIEWER,
-    APP_MANAGER
+    APP_MANAGER,
+    VAULT,
+    DUPLICATES,
+    STORAGE_ANALYZER
 }
 
 data class StorageTabState(
@@ -137,6 +138,30 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     val isAppsLoading = MutableStateFlow(false)
     val includeSystemApps = MutableStateFlow(false)
     val appsSearchQuery = MutableStateFlow("")
+
+    // Vault Repository & State
+    val vaultRepository = VaultRepository(application)
+    val isVaultPinSet = MutableStateFlow(vaultRepository.isPinSet())
+    val isVaultUnlocked = MutableStateFlow(false)
+    private val _vaultFiles = MutableStateFlow<List<FileItem>>(emptyList())
+    val vaultFiles: StateFlow<List<FileItem>> = _vaultFiles.asStateFlow()
+    val isVaultLoading = MutableStateFlow(false)
+
+    // Duplicate Repository & State
+    val duplicateRepository = DuplicateRepository(application)
+    private val _duplicateScanResult = MutableStateFlow<DuplicateScanResult?>(null)
+    val duplicateScanResult: StateFlow<DuplicateScanResult?> = _duplicateScanResult.asStateFlow()
+    val isDuplicateScanning = MutableStateFlow(false)
+    val selectedDuplicateFiles = MutableStateFlow<Set<FileItem>>(emptySet())
+
+    // Storage Analyzer Repository & State
+    val storageAnalyzerRepository = StorageAnalyzerRepository(application)
+    private val _storageAnalysisResult = MutableStateFlow<StorageAnalysisResult?>(null)
+    val storageAnalysisResult: StateFlow<StorageAnalysisResult?> = _storageAnalysisResult.asStateFlow()
+    val isStorageAnalyzing = MutableStateFlow(false)
+
+    // AMOLED Pitch Black Mode State
+    val isAmoledMode = MutableStateFlow(false)
 
     // Snackbar message
     private val _message = MutableStateFlow<String?>(null)
@@ -615,6 +640,170 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
 
     fun setAppsSearchQuery(q: String) {
         appsSearchQuery.value = q
+    }
+
+    // AMOLED Mode
+    fun toggleAmoledMode() {
+        val next = !isAmoledMode.value
+        isAmoledMode.value = next
+        showMessage(if (next) "AMOLED Pure Black ON" else "AMOLED Pure Black OFF")
+    }
+
+    // Vault Functions
+    fun openVault() {
+        isVaultPinSet.value = vaultRepository.isPinSet()
+        navigateToScreen(Screen.VAULT)
+    }
+
+    fun setupVaultPin(pin: String, answer: String) {
+        vaultRepository.setPin(pin, answer)
+        isVaultPinSet.value = true
+        isVaultUnlocked.value = true
+        loadVaultFiles()
+        showMessage("Vault PIN set successfully")
+    }
+
+    fun unlockVault(pin: String): Boolean {
+        val valid = vaultRepository.verifyPin(pin)
+        if (valid) {
+            isVaultUnlocked.value = true
+            loadVaultFiles()
+        }
+        return valid
+    }
+
+    fun lockVault() {
+        isVaultUnlocked.value = false
+        _vaultFiles.value = emptyList()
+        showMessage("Vault locked")
+    }
+
+    fun loadVaultFiles() {
+        viewModelScope.launch {
+            isVaultLoading.value = true
+            _vaultFiles.value = vaultRepository.getVaultFiles()
+            isVaultLoading.value = false
+        }
+    }
+
+    fun addFileToVault(item: FileItem) {
+        viewModelScope.launch {
+            val success = vaultRepository.addToVault(item.file)
+            if (success) {
+                showMessage("Moved \"${item.name}\" to Private Vault")
+                loadDirectory(_storageState.value.currentDir)
+                if (isVaultUnlocked.value) loadVaultFiles()
+            } else {
+                showMessage("Failed to move file to Vault")
+            }
+        }
+    }
+
+    fun restoreFileFromVault(item: FileItem) {
+        viewModelScope.launch {
+            val target = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS).let {
+                File(it, "Restored")
+            }
+            val success = vaultRepository.restoreFromVault(item.file, target)
+            if (success) {
+                showMessage("Restored to Downloads/Restored")
+                loadVaultFiles()
+                loadDirectory(_storageState.value.currentDir)
+            } else {
+                showMessage("Failed to restore file")
+            }
+        }
+    }
+
+    fun deleteFileFromVault(item: FileItem) {
+        viewModelScope.launch {
+            val success = vaultRepository.deleteFromVault(item.file)
+            if (success) {
+                showMessage("Deleted from Vault")
+                loadVaultFiles()
+            }
+        }
+    }
+
+    // Duplicate Finder Functions
+    fun openDuplicateFinder() {
+        navigateToScreen(Screen.DUPLICATES)
+    }
+
+    fun scanForDuplicates() {
+        viewModelScope.launch {
+            isDuplicateScanning.value = true
+            val result = duplicateRepository.findDuplicates()
+            _duplicateScanResult.value = result
+            selectedDuplicateFiles.value = result.groups.flatMap { it.duplicates }.toSet()
+            isDuplicateScanning.value = false
+        }
+    }
+
+    fun toggleSelectDuplicate(file: FileItem) {
+        val current = selectedDuplicateFiles.value.toMutableSet()
+        if (current.contains(file)) current.remove(file) else current.add(file)
+        selectedDuplicateFiles.value = current
+    }
+
+    fun selectAllDuplicateCopies() {
+        val allCopies = _duplicateScanResult.value?.groups?.flatMap { it.duplicates }?.toSet() ?: emptySet()
+        selectedDuplicateFiles.value = allCopies
+    }
+
+    fun clearSelectedDuplicates() {
+        selectedDuplicateFiles.value = emptySet()
+    }
+
+    fun deleteSelectedDuplicates() {
+        val toDelete = selectedDuplicateFiles.value.toList()
+        if (toDelete.isEmpty()) return
+        viewModelScope.launch {
+            val deletedCount = duplicateRepository.deleteFiles(toDelete)
+            val freedBytes = toDelete.sumOf { it.size }
+            showMessage("Deleted $deletedCount duplicates (Freed ${FileItem.formatBytes(freedBytes)})")
+            selectedDuplicateFiles.value = emptySet()
+            scanForDuplicates()
+            refreshStorage()
+            loadDirectory(_storageState.value.currentDir)
+        }
+    }
+
+    // Storage Analyzer Functions
+    fun openStorageAnalyzer() {
+        navigateToScreen(Screen.STORAGE_ANALYZER)
+    }
+
+    fun analyzeStorage() {
+        viewModelScope.launch {
+            isStorageAnalyzing.value = true
+            _storageAnalysisResult.value = storageAnalyzerRepository.analyzeStorage()
+            isStorageAnalyzing.value = false
+        }
+    }
+
+    fun openDirectoryFromAnalyzer(dir: File) {
+        loadDirectory(dir, addToHistory = true)
+        _selectedTab.value = MiTab.STORAGE
+        navigateToScreen(Screen.MAIN)
+    }
+
+    // Batch Rename Function
+    fun batchRename(pairs: List<Pair<FileItem, String>>) {
+        viewModelScope.launch {
+            var successCount = 0
+            for ((item, newName) in pairs) {
+                if (item.name != newName) {
+                    val target = File(item.file.parentFile, newName)
+                    if (item.file.renameTo(target)) {
+                        successCount++
+                    }
+                }
+            }
+            showMessage("Renamed $successCount files successfully")
+            clearSelection()
+            loadDirectory(_storageState.value.currentDir)
+        }
     }
 
     fun showMessage(msg: String) {

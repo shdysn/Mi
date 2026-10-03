@@ -48,12 +48,35 @@ private val DarkColorScheme = darkColorScheme(
     outline = Color(0xFF383838)
 )
 
+private val AmoledColorScheme = darkColorScheme(
+    primary = MiOrange,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF1C130D),
+    onPrimaryContainer = MiOrangeLight,
+    secondary = MiBlue,
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFF0F1B2B),
+    onSecondaryContainer = MiBlue,
+    background = Color(0xFF000000),
+    onBackground = Color(0xFFFFFFFF),
+    surface = Color(0xFF000000),
+    onSurface = Color(0xFFFFFFFF),
+    surfaceVariant = Color(0xFF121212),
+    onSurfaceVariant = Color(0xFFAAAAAA),
+    outline = Color(0xFF262626)
+)
+
 @Composable
 fun MiExplorerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    amoledMode: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val colorScheme = when {
+        amoledMode -> AmoledColorScheme
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }
     val view = LocalView.current
 
     if (!view.isInEditMode) {

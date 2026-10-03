@@ -51,6 +51,7 @@ fun MainScreen(
     val recentFiles by viewModel.recentFiles.collectAsStateWithLifecycle()
     val isRecentLoading by viewModel.isRecentLoading.collectAsStateWithLifecycle()
     val clipboardState by viewModel.clipboard.collectAsStateWithLifecycle()
+    val isAmoled by viewModel.isAmoledMode.collectAsStateWithLifecycle()
 
     var isSearchActive by remember { mutableStateOf(false) }
     var recentFilter by remember { mutableStateOf("All") }
@@ -68,6 +69,7 @@ fun MainScreen(
     var zipArchiveName by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
     var openWithTarget by remember { mutableStateOf<FileItem?>(null) }
+    var showBatchRenameDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.testTag("main_screen"),
@@ -110,7 +112,12 @@ fun MainScreen(
                     onTabSelected = { viewModel.selectTab(it) },
                     onSearchClick = { isSearchActive = true },
                     onCleanerClick = { viewModel.openCleaner() },
-                    onFtpClick = { viewModel.openFtpServer() }
+                    onFtpClick = { viewModel.openFtpServer() },
+                    onVaultClick = { viewModel.openVault() },
+                    onDuplicatesClick = { viewModel.openDuplicateFinder() },
+                    onAnalyzerClick = { viewModel.openStorageAnalyzer() },
+                    onAmoledToggle = { viewModel.toggleAmoledMode() },
+                    isAmoled = isAmoled
                 )
             }
         },
@@ -229,6 +236,7 @@ fun MainScreen(
                                         openWithTarget = item
                                     }
                                 }
+                                "vault" -> viewModel.addFileToVault(item)
                                 "copy" -> viewModel.copySingle(item)
                                 "cut" -> viewModel.cutSingle(item)
                                 "rename" -> {
@@ -251,6 +259,10 @@ fun MainScreen(
                         onCleanClick = { viewModel.openCleaner() },
                         onCategoryClick = { cat, title -> viewModel.openCategory(cat, title) },
                         onAppManagerClick = { viewModel.openAppManager() },
+                        onVaultClick = { viewModel.openVault() },
+                        onDuplicatesClick = { viewModel.openDuplicateFinder() },
+                        onAnalyzerClick = { viewModel.openStorageAnalyzer() },
+                        onBatchRename = { showBatchRenameDialog = true },
                         onNavigateTo = { viewModel.loadDirectory(it, addToHistory = true) },
                         onNavigateUp = {
                             val parent = storageState.currentDir.parentFile
@@ -294,6 +306,7 @@ fun MainScreen(
                                         openWithTarget = item
                                     }
                                 }
+                                "vault" -> viewModel.addFileToVault(item)
                                 "copy" -> viewModel.copySingle(item)
                                 "cut" -> viewModel.cutSingle(item)
                                 "rename" -> {
@@ -581,6 +594,68 @@ fun MainScreen(
             }
         )
     }
+
+    if (showBatchRenameDialog && storageState.selectedItems.size >= 2) {
+        BatchRenameDialog(
+            selectedFiles = storageState.selectedItems.toList(),
+            onDismiss = { showBatchRenameDialog = false },
+            onApplyRename = { pairs ->
+                viewModel.batchRename(pairs)
+                showBatchRenameDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+fun PowerToolCard(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    color: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        tonalElevation = 1.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(color.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
 }
 
 @Composable
@@ -732,6 +807,10 @@ fun StorageTabContent(
     onCleanClick: () -> Unit,
     onCategoryClick: (FileCategory, String) -> Unit,
     onAppManagerClick: () -> Unit,
+    onVaultClick: () -> Unit,
+    onDuplicatesClick: () -> Unit,
+    onAnalyzerClick: () -> Unit,
+    onBatchRename: () -> Unit,
     onNavigateTo: (File) -> Unit,
     onNavigateUp: () -> Unit,
     onOpenFile: (FileItem) -> Unit,
@@ -774,6 +853,41 @@ fun StorageTabContent(
                     onAppManagerClick = onAppManagerClick,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                 )
+            }
+
+            // Exclusive Power Tools Row
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PowerToolCard(
+                        title = "Vault",
+                        subtitle = "Hidden & Safe",
+                        icon = Icons.Default.Lock,
+                        color = MiOrange,
+                        onClick = onVaultClick,
+                        modifier = Modifier.weight(1f)
+                    )
+                    PowerToolCard(
+                        title = "Duplicates",
+                        subtitle = "Free space",
+                        icon = Icons.Default.ContentCopy,
+                        color = Color(0xFF10B981),
+                        onClick = onDuplicatesClick,
+                        modifier = Modifier.weight(1f)
+                    )
+                    PowerToolCard(
+                        title = "Analyzer",
+                        subtitle = "Storage map",
+                        icon = Icons.Default.PieChart,
+                        color = Color(0xFF3B82F6),
+                        onClick = onAnalyzerClick,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
 
             item {
@@ -828,7 +942,7 @@ fun StorageTabContent(
             }
         }
 
-        // Action Toolbar (New Folder, New File, Select All)
+        // Action Toolbar (New Folder, New File, Select All, Batch Rename)
         item {
             Row(
                 modifier = Modifier
@@ -846,6 +960,11 @@ fun StorageTabContent(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (storageState.selectedItems.size >= 2) {
+                            IconButton(onClick = onBatchRename, modifier = Modifier.size(34.dp)) {
+                                Icon(Icons.Default.DriveFileRenameOutline, contentDescription = "Batch Rename", tint = MiOrange)
+                            }
+                        }
                         IconButton(onClick = onCopySelected, modifier = Modifier.size(34.dp)) {
                             Icon(Icons.Default.ContentCopy, contentDescription = "Copy")
                         }

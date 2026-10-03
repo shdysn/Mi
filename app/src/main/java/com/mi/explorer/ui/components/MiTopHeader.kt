@@ -7,12 +7,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,8 +32,15 @@ fun MiTopHeader(
     onSearchClick: () -> Unit,
     onCleanerClick: () -> Unit,
     onFtpClick: () -> Unit,
+    onVaultClick: () -> Unit = {},
+    onDuplicatesClick: () -> Unit = {},
+    onAnalyzerClick: () -> Unit = {},
+    onAmoledToggle: () -> Unit = {},
+    isAmoled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    var showMoreMenu by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -70,48 +74,103 @@ fun MiTopHeader(
                 )
             }
 
-            // Action icons: Cleaner, FTP / Transfer, Search
+            // Action icons: Cleaner, FTP / Transfer, Search, More
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = onCleanerClick,
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(38.dp)
                         .testTag("header_cleaner_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.CleaningServices,
                         contentDescription = "Cleaner",
                         tint = MiOrange,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
                 IconButton(
                     onClick = onFtpClick,
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(38.dp)
                         .testTag("header_ftp_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Wifi,
                         contentDescription = "Transfer to PC (FTP)",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
                 IconButton(
                     onClick = onSearchClick,
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(38.dp)
                         .testTag("header_search_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
+                }
+
+                Box {
+                    IconButton(
+                        onClick = { showMoreMenu = true },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .testTag("header_more_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More tools",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showMoreMenu,
+                        onDismissRequest = { showMoreMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Private Vault") },
+                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = MiOrange) },
+                            onClick = {
+                                showMoreMenu = false
+                                onVaultClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Duplicate Finder") },
+                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color(0xFF10B981)) },
+                            onClick = {
+                                showMoreMenu = false
+                                onDuplicatesClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Storage Analyzer") },
+                            leadingIcon = { Icon(Icons.Default.PieChart, contentDescription = null, tint = Color(0xFF3B82F6)) },
+                            onClick = {
+                                showMoreMenu = false
+                                onAnalyzerClick()
+                            }
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text(if (isAmoled) "AMOLED Black (ON)" else "AMOLED Black (OFF)") },
+                            leadingIcon = { Icon(Icons.Default.DarkMode, contentDescription = null) },
+                            onClick = {
+                                showMoreMenu = false
+                                onAmoledToggle()
+                            }
+                        )
+                    }
                 }
             }
         }

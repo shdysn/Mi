@@ -43,7 +43,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            MiExplorerTheme {
+            val isAmoled by viewModel.isAmoledMode.collectAsStateWithLifecycle()
+            MiExplorerTheme(amoledMode = isAmoled) {
                 MiMainApp(viewModel = viewModel)
             }
         }
@@ -148,6 +149,9 @@ fun MiMainApp(viewModel: ExplorerViewModel) {
                 Screen.TEXT_EDITOR -> TextEditorScreen(viewModel = viewModel)
                 Screen.IMAGE_VIEWER -> ImageViewerScreen(viewModel = viewModel)
                 Screen.APP_MANAGER -> AppManagerScreen(viewModel = viewModel)
+                Screen.VAULT -> VaultScreen(viewModel = viewModel)
+                Screen.DUPLICATES -> DuplicateFinderScreen(viewModel = viewModel)
+                Screen.STORAGE_ANALYZER -> StorageAnalyzerScreen(viewModel = viewModel)
             }
         }
     }
