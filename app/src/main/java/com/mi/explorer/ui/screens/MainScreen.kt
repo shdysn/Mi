@@ -319,7 +319,7 @@ fun MainScreen(
                                     zipArchiveName = "${item.name}.zip"
                                     zipTargets = listOf(item)
                                 }
-                                "unzip" -> viewModel.unzipItem(item)
+                                "unzip" -> viewModel.openZipViewer(item.file)
                             }
                         }
                     )
@@ -479,35 +479,14 @@ fun MainScreen(
     }
 
     zipTargets?.let { targets ->
-        AlertDialog(
-            onDismissRequest = { zipTargets = null },
-            title = { Text("Compress to ZIP") },
-            text = {
-                OutlinedTextField(
-                    value = zipArchiveName,
-                    onValueChange = { zipArchiveName = it },
-                    label = { Text("Archive Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (zipArchiveName.isNotBlank()) {
-                            viewModel.zipItems(targets, zipArchiveName)
-                            zipTargets = null
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MiOrange)
-                ) {
-                    Text("Compress")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { zipTargets = null }) {
-                    Text("Cancel")
-                }
+        ZipCompressDialog(
+            selectedItems = targets,
+            defaultArchiveName = zipArchiveName,
+            onDismiss = { zipTargets = null },
+            onCompress = { name, level ->
+                val destFile = File(storageState.currentDir, name)
+                viewModel.compressFilesToZip(targets.map { it.file }, destFile, level)
+                zipTargets = null
             }
         )
     }
@@ -520,7 +499,7 @@ fun MainScreen(
                     "Edit in Mi Text Editor (Built-in)"
                 } else null
             }
-            FileCategory.ARCHIVE -> "Extract Archive"
+            FileCategory.ARCHIVE -> "Inspect & Extract with Mi Zip"
             FileCategory.APK -> "Inspect / Manage APK"
             else -> null
         }
@@ -534,7 +513,7 @@ fun MainScreen(
                 } else null
             }
             FileCategory.ARCHIVE -> {
-                { viewModel.unzipItem(target) }
+                { viewModel.openZipViewer(target.file) }
             }
             FileCategory.APK -> {
                 { viewModel.openAppManager() }
@@ -1083,7 +1062,7 @@ fun handleOpenFile(
             viewModel.openImageViewer(item.file, siblingItems)
         }
         FileCategory.ARCHIVE -> {
-            viewModel.unzipItem(item)
+            viewModel.openZipViewer(item.file)
         }
         FileCategory.APK -> {
             viewModel.openAppManager()

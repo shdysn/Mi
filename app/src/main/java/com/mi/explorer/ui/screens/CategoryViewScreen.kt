@@ -124,7 +124,7 @@ fun CategoryViewScreen(
                     "Edit in Mi Text Editor (Built-in)"
                 } else null
             }
-            FileCategory.ARCHIVE -> "Extract Archive"
+            FileCategory.ARCHIVE -> "Inspect & Extract with Mi Zip"
             FileCategory.APK -> "Inspect / Manage APK"
             else -> null
         }
@@ -138,7 +138,7 @@ fun CategoryViewScreen(
                 } else null
             }
             FileCategory.ARCHIVE -> {
-                { viewModel.unzipItem(target) }
+                { viewModel.openZipViewer(target.file) }
             }
             FileCategory.APK -> {
                 { viewModel.openAppManager() }

@@ -23,8 +23,15 @@ enum class Screen {
     APP_MANAGER,
     VAULT,
     DUPLICATES,
-    STORAGE_ANALYZER
+    STORAGE_ANALYZER,
+    ZIP_VIEWER
 }
+
+data class ZipViewerState(
+    val archiveInfo: ZipArchiveInfo? = null,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null
+)
 
 data class StorageTabState(
     val currentDir: File,
@@ -159,6 +166,12 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     private val _storageAnalysisResult = MutableStateFlow<StorageAnalysisResult?>(null)
     val storageAnalysisResult: StateFlow<StorageAnalysisResult?> = _storageAnalysisResult.asStateFlow()
     val isStorageAnalyzing = MutableStateFlow(false)
+
+    // Zip Viewer & Compressor State
+    val zipRepository = ZipRepository(application)
+    private val _zipViewerState = MutableStateFlow(ZipViewerState())
+    val zipViewerState: StateFlow<ZipViewerState> = _zipViewerState.asStateFlow()
+    val isZipExtracting = MutableStateFlow(false)
 
     // AMOLED Pitch Black Mode State
     val isAmoledMode = MutableStateFlow(false)
@@ -809,6 +822,75 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
             showMessage("Renamed $successCount files successfully")
             clearSelection()
             loadDirectory(_storageState.value.currentDir)
+        }
+    }
+
+    // Zip Archive Functions
+    fun openZipViewer(file: File) {
+        viewModelScope.launch {
+            _zipViewerState.value = ZipViewerState(isLoading = true)
+            navigateToScreen(Screen.ZIP_VIEWER)
+            val res = zipRepository.inspectZipFile(file)
+            res.fold(
+                onSuccess = { info ->
+                    _zipViewerState.value = ZipViewerState(archiveInfo = info, isLoading = false)
+                },
+                onFailure = { err ->
+                    _zipViewerState.value = ZipViewerState(isLoading = false, errorMessage = err.localizedMessage)
+                }
+            )
+        }
+    }
+
+    fun openZipFromUri(uri: android.net.Uri, name: String) {
+        viewModelScope.launch {
+            _zipViewerState.value = ZipViewerState(isLoading = true)
+            navigateToScreen(Screen.ZIP_VIEWER)
+            val res = zipRepository.inspectZipUri(uri, name)
+            res.fold(
+                onSuccess = { info ->
+                    _zipViewerState.value = ZipViewerState(archiveInfo = info, isLoading = false)
+                },
+                onFailure = { err ->
+                    _zipViewerState.value = ZipViewerState(isLoading = false, errorMessage = err.localizedMessage)
+                }
+            )
+        }
+    }
+
+    fun extractZipArchive(zipFile: File, targetDir: File, selectedEntries: Set<String>? = null) {
+        viewModelScope.launch {
+            isZipExtracting.value = true
+            val res = zipRepository.extractArchive(zipFile, targetDir, selectedEntries)
+            isZipExtracting.value = false
+            res.fold(
+                onSuccess = { count ->
+                    showMessage("Extracted $count files to ${targetDir.name}")
+                    loadDirectory(_storageState.value.currentDir)
+                    refreshStorage()
+                },
+                onFailure = { err ->
+                    showMessage("Extraction failed: ${err.localizedMessage}")
+                }
+            )
+        }
+    }
+
+    fun compressFilesToZip(items: List<File>, destinationZip: File, compressionLevel: Int) {
+        viewModelScope.launch {
+            showMessage("Compressing ${items.size} items...")
+            val res = zipRepository.compressFiles(items, destinationZip, compressionLevel)
+            res.fold(
+                onSuccess = { createdFile ->
+                    showMessage("Created ${createdFile.name} (${FileItem.formatBytes(createdFile.length())})")
+                    clearSelection()
+                    loadDirectory(_storageState.value.currentDir)
+                    refreshStorage()
+                },
+                onFailure = { err ->
+                    showMessage("Compression failed: ${err.localizedMessage}")
+                }
+            )
         }
     }
 

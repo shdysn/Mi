@@ -41,12 +41,27 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleIncomingIntent(intent)
 
         setContent {
             val isAmoled by viewModel.isAmoledMode.collectAsStateWithLifecycle()
             MiExplorerTheme(amoledMode = isAmoled) {
                 MiMainApp(viewModel = viewModel)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent) {
+        if (intent.action == Intent.ACTION_VIEW) {
+            val uri = intent.data ?: return
+            val displayName = uri.lastPathSegment ?: "archive.zip"
+            viewModel.openZipFromUri(uri, displayName)
         }
     }
 }
@@ -167,6 +182,7 @@ fun MiMainApp(viewModel: ExplorerViewModel) {
                 Screen.VAULT -> VaultScreen(viewModel = viewModel)
                 Screen.DUPLICATES -> DuplicateFinderScreen(viewModel = viewModel)
                 Screen.STORAGE_ANALYZER -> StorageAnalyzerScreen(viewModel = viewModel)
+                Screen.ZIP_VIEWER -> ZipViewerScreen(viewModel = viewModel)
             }
         }
     }
